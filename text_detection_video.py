@@ -147,8 +147,8 @@ def run_detection(east, video, time_for_frame, width, height):
 )
 @click.option('--video', type=click.Path(exists=True), help='Path to the video file.')
 @click.option('--duration', default=1500, type=int, help='Duration per frame (in milliseconds).', show_default=True)
-def main(east, video):
-	run_detection(east, video, 1500, 320, 320)
+def main(east, video, duration):
+	run_detection(east, video, duration, 320, 320)
 
 if __name__ == "__main__":
 	main()
