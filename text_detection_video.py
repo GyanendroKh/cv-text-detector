@@ -85,6 +85,9 @@ def run_detection(east, video, time_for_frame, width, height):
 	net = cv2.dnn.readNet(east)
 	print("\r[INFO] Loaded EAST text detector...")
 
+	hog = cv2.HOGDescriptor() 
+	hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector()) 
+
 	vs = cv2.VideoCapture(video)
 
 	fps = vs.get(cv2.CAP_PROP_FPS)
@@ -102,7 +105,7 @@ def run_detection(east, video, time_for_frame, width, height):
 		if frame is None:
 			break
 		
-		frame = imutils.resize(frame, width=1000)
+		frame = imutils.resize(frame, width=min(400, frame.shape[1]))
 		orig = frame.copy()
 
 		if W is None or H is None:
@@ -112,6 +115,26 @@ def run_detection(east, video, time_for_frame, width, height):
 
 		frame = cv2.resize(frame, (newW, newH))
 
+		(h_regions, _) = hog.detectMultiScale(
+			frame,
+			winStride=(4, 4),
+			padding=(8, 8),
+			scale=1.05
+		)
+
+		rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in h_regions])
+		pick = non_max_suppression(rects, probs=0.5, overlapThresh=0.65)
+
+		region_to_ignore = []
+
+		for (startX, startY, endX, endY) in pick:
+			startX = int(startX * rW)
+			startY = int(startY * rH)
+			endX = int(endX * rW)
+			endY = int(endY * rH)
+
+			region_to_ignore.append(((startX, startY), (endX, endY)))
+
 		blob = cv2.dnn.blobFromImage(frame, 1.0, (newW, newH),
 			(123.68, 116.78, 103.94), swapRB=True, crop=False)
 		net.setInput(blob)
@@ -120,8 +143,7 @@ def run_detection(east, video, time_for_frame, width, height):
 		(rects, confidences) = decode_predictions(scores, geometry)
 		boxes = non_max_suppression(np.array(rects), probs=confidences)
 
-		if len(boxes) == 0:
-			continue
+		regions = []
 
 		for (startX, startY, endX, endY) in boxes:
 			startX = int(startX * rW)
@@ -129,6 +151,24 @@ def run_detection(east, video, time_for_frame, width, height):
 			endX = int(endX * rW)
 			endY = int(endY * rH)
 
+			ignore = False
+
+			for ((iStartX, iStartY), (iEndX, iEndY)) in region_to_ignore:
+				if startX > iStartX and endX < iEndX:
+					ignore = True
+			
+			if ignore:
+				continue
+
+			regions.append(((startX, startY), (endX, endY)))
+
+		if len(regions) == 0:
+			continue
+		
+		for ((startX, startY), (endX, endY)) in region_to_ignore:
+			cv2.rectangle(orig, (startX, startY), (endX, endY), (0, 255, 255), 2)
+
+		for ((startX, startY), (endX, endY)) in regions:
 			cv2.rectangle(orig, (startX, startY), (endX, endY), (0, 255, 0), 2)
 
 		cv2.imwrite(f'frame-{format_time(j * int((time_for_frame/1000)))}.jpg', orig)
