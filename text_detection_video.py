@@ -181,12 +181,17 @@ def run_detection(east, video, time_for_frame, width, height):
 @click.option(
 	'--east',
 	default='frozen_east_text_detection.pb',
-	type=click.Path(exists=True),
+	type=click.Path(exists=True), show_default=True,
 	help='Path to the East Text Detector Model.',
-	show_default=True
 )
-@click.option('--video', type=click.Path(exists=True), help='Path to the video file.')
-@click.option('--duration', default=1500, type=int, help='Duration per frame (in milliseconds).', show_default=True)
+@click.option('--video',
+	type=click.Path(exists=True),
+	help='Path to the video file.'
+)
+@click.option('--duration',
+	default=1500, type=int, show_default=True,
+	help='Duration per frame (in milliseconds).',
+)
 def main(east, video, duration):
 	run_detection(east, video, duration, 320, 320)
 
