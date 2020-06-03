@@ -15,23 +15,23 @@ def format_time(t):
 	secs = math.floor(t % 60)
 
 	t = ''
-	
+
 	if hrs > 0:
 		if hrs < 10:
 			t += '0'
 		else:
 			t += ''
-	
-	if mins < 10:
-		t += f'{hrs}_0'
-	else:
-		t += f'{hrs}_'
+
+		if mins < 10:
+			t += f'{hrs}_0'
+		else:
+			t += f'{hrs}_'
 
 	if secs < 10:
 		t += f'{mins}_0'
 	else:
 		t += f'{mins}_'
-	
+
 	t += f'{secs}'
 
 	return t
@@ -73,6 +73,41 @@ def decode_predictions(scores, geometry):
 	return (rects, confidences)
 
 
+def compute_regions_to_ignore(hog, img, rW, rH):
+	(regions, _) = hog.detectMultiScale(
+		img,
+		winStride=(4, 4),
+		padding=(8, 8),
+		scale=1.05
+	)
+
+	rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in regions])
+	pick = non_max_suppression(rects, probs=0.5, overlapThresh=0.65)
+
+	region_to_ignore = []
+
+	for (startX, startY, endX, endY) in pick:
+		startX = int(startX * rW)
+		startY = int(startY * rH)
+		endX = int(endX * rW)
+		endY = int(endY * rH)
+
+		region_to_ignore.append(((startX, startY), (endX, endY)))
+	return region_to_ignore
+
+
+def ignore_region(actual_region, region_to_ignore, padding=50):
+	(startX, startY, endX, endY) = actual_region
+
+	ignore = False
+
+	for ((iStartX, iStartY), (iEndX, iEndY)) in region_to_ignore:
+		if startX > iStartX - padding and endX < iEndX + padding:
+			ignore = True
+
+	return ignore
+
+
 def run_detection(east, video, time_for_frame, width, height, output):
 	(W, H) = (None, None)
 	(newW, newH) = (width, height)
@@ -105,8 +140,8 @@ def run_detection(east, video, time_for_frame, width, height, output):
 
 		if frame is None:
 			break
-		
-		frame = imutils.resize(frame, width=min(400, frame.shape[1]))
+
+		frame = imutils.resize(frame, width=480)
 		orig = frame.copy()
 
 		if W is None or H is None:
@@ -116,25 +151,7 @@ def run_detection(east, video, time_for_frame, width, height, output):
 
 		frame = cv2.resize(frame, (newW, newH))
 
-		(h_regions, _) = hog.detectMultiScale(
-			frame,
-			winStride=(4, 4),
-			padding=(8, 8),
-			scale=1.05
-		)
-
-		rects = np.array([[x, y, x + w, y + h] for (x, y, w, h) in h_regions])
-		pick = non_max_suppression(rects, probs=0.5, overlapThresh=0.65)
-
-		region_to_ignore = []
-
-		for (startX, startY, endX, endY) in pick:
-			startX = int(startX * rW)
-			startY = int(startY * rH)
-			endX = int(endX * rW)
-			endY = int(endY * rH)
-
-			region_to_ignore.append(((startX, startY), (endX, endY)))
+		region_to_ignore = compute_regions_to_ignore(hog, frame, rW, rH)
 
 		blob = cv2.dnn.blobFromImage(frame, 1.0, (newW, newH),
 			(123.68, 116.78, 103.94), swapRB=True, crop=False)
@@ -152,20 +169,14 @@ def run_detection(east, video, time_for_frame, width, height, output):
 			endX = int(endX * rW)
 			endY = int(endY * rH)
 
-			ignore = False
-
-			for ((iStartX, iStartY), (iEndX, iEndY)) in region_to_ignore:
-				if startX > iStartX and endX < iEndX:
-					ignore = True
-			
-			if ignore:
+			if ignore_region((startX, startY, endX, endY), region_to_ignore, 50):
 				continue
 
 			regions.append(((startX, startY), (endX, endY)))
 
 		if len(regions) == 0:
 			continue
-		
+
 		for ((startX, startY), (endX, endY)) in region_to_ignore:
 			cv2.rectangle(orig, (startX, startY), (endX, endY), (0, 255, 255), 2)
 
@@ -203,7 +214,7 @@ def main(east, video, duration, output):
 			os.mkdir(output)
 	else:
 		os.mkdir(output)
-	run_detection(east, video, duration, 320, 320, output)
+	run_detection(east, video, duration, 480, 480, output)
 
 if __name__ == "__main__":
 	main()
