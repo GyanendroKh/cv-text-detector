@@ -5,6 +5,7 @@ import imutils
 import time
 import click
 import cv2
+import os
 import math
 
 
@@ -72,7 +73,7 @@ def decode_predictions(scores, geometry):
 	return (rects, confidences)
 
 
-def run_detection(east, video, time_for_frame, width, height):
+def run_detection(east, video, time_for_frame, width, height, output):
 	(W, H) = (None, None)
 	(newW, newH) = (width, height)
 	(rW, rH) = (None, None)
@@ -171,7 +172,7 @@ def run_detection(east, video, time_for_frame, width, height):
 		for ((startX, startY), (endX, endY)) in regions:
 			cv2.rectangle(orig, (startX, startY), (endX, endY), (0, 255, 0), 2)
 
-		cv2.imwrite(f'frame-{format_time(j * int((time_for_frame/1000)))}.jpg', orig)
+		cv2.imwrite(os.path.join(output, f'frame-{format_time(j * int((time_for_frame/1000)))}.jpg'), orig)
 
 	vs.release()
 	cv2.destroyAllWindows()
@@ -192,8 +193,17 @@ def run_detection(east, video, time_for_frame, width, height):
 	default=1500, type=int, show_default=True,
 	help='Duration per frame (in milliseconds).',
 )
-def main(east, video, duration):
-	run_detection(east, video, duration, 320, 320)
+@click.option('--output',
+	default='./output', type=click.Path(),
+	help='Output folder for the images (frame).'
+)
+def main(east, video, duration, output):
+	if os.path.exists(output):
+		if not os.path.isdir(output):
+			os.mkdir(output)
+	else:
+		os.mkdir(output)
+	run_detection(east, video, duration, 320, 320, output)
 
 if __name__ == "__main__":
 	main()
