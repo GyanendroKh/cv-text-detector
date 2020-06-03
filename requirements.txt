@@ -3,3 +3,4 @@ numpy==1.18.4
 opencv-python==4.2.0.34
 tqdm==4.46.0
 imutils==0.5.3
+scikit-image==0.17.2

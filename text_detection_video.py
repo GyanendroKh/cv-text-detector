@@ -1,4 +1,5 @@
 from imutils.object_detection import non_max_suppression
+from skimage.metrics import structural_similarity
 import numpy as np
 import tqdm
 import imutils
@@ -96,6 +97,12 @@ def compute_regions_to_ignore(hog, img, rW, rH):
 	return region_to_ignore
 
 
+def detect_diff(img1, img2):
+	img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+	img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+	(score, _) = structural_similarity(img1, img2, full=True)
+	return score
+
 def ignore_region(actual_region, region_to_ignore, padding=50):
 	(startX, startY, endX, endY) = actual_region
 
@@ -108,7 +115,7 @@ def ignore_region(actual_region, region_to_ignore, padding=50):
 	return ignore
 
 
-def run_detection(east, video, time_for_frame, width, height, output):
+def run_detection(east, video, time_for_frame, width, height, output, diff, no_draw):
 	(W, H) = (None, None)
 	(newW, newH) = (width, height)
 	(rW, rH) = (None, None)
@@ -130,6 +137,8 @@ def run_detection(east, video, time_for_frame, width, height, output):
 	frame_count = int(vs.get(cv2.CAP_PROP_FRAME_COUNT))
 	duration = frame_count/fps
 
+	prev = None
+
 	i = 0
 	for j in tqdm.trange(int(duration//(time_for_frame/1000))):
 		frame = vs.read()
@@ -145,12 +154,27 @@ def run_detection(east, video, time_for_frame, width, height, output):
 		orig = frame.copy()
 
 		if W is None or H is None:
-			(H, W) = frame.shape[:2]
+			(H, W) = (360, 480)
 			rW = W / float(newW)
 			rH = H / float(newH)
 
-		frame = cv2.resize(frame, (newW, newH))
+		if prev is None:
+			prev = frame
+			continue
 
+		d = detect_diff(frame, prev)
+
+		# print(diff)
+		# cv2.imshow("Frame", frame)
+		# cv2.imshow("Prev", prev)
+		# cv2.waitKey(0)
+
+		prev = frame
+
+		if d > diff:
+			continue
+
+		frame = cv2.resize(frame, (newW, newH))
 		region_to_ignore = compute_regions_to_ignore(hog, frame, rW, rH)
 
 		blob = cv2.dnn.blobFromImage(frame, 1.0, (newW, newH),
@@ -177,11 +201,12 @@ def run_detection(east, video, time_for_frame, width, height, output):
 		if len(regions) == 0:
 			continue
 
-		for ((startX, startY), (endX, endY)) in region_to_ignore:
-			cv2.rectangle(orig, (startX, startY), (endX, endY), (0, 255, 255), 2)
+		if not no_draw:
+			for ((startX, startY), (endX, endY)) in region_to_ignore:
+				cv2.rectangle(orig, (startX, startY), (endX, endY), (0, 255, 255), 2)
 
-		for ((startX, startY), (endX, endY)) in regions:
-			cv2.rectangle(orig, (startX, startY), (endX, endY), (0, 255, 0), 2)
+			for ((startX, startY), (endX, endY)) in regions:
+				cv2.rectangle(orig, (startX, startY), (endX, endY), (0, 255, 0), 2)
 
 		cv2.imwrite(os.path.join(output, f'frame-{format_time(j * int((time_for_frame/1000)))}.jpg'), orig)
 
@@ -208,13 +233,18 @@ def run_detection(east, video, time_for_frame, width, height, output):
 	default='./output', type=click.Path(),
 	help='Output folder for the images (frame).'
 )
-def main(east, video, duration, output):
+@click.option('--diff',
+	default=0.80, type=float,
+	help='Probability for image difference (1 for excat match).'
+)
+@click.option('--no-draw', is_flag=True, help='Should skip drawing boxes.')
+def main(east, video, duration, output, diff, no_draw):
 	if os.path.exists(output):
 		if not os.path.isdir(output):
 			os.mkdir(output)
 	else:
 		os.mkdir(output)
-	run_detection(east, video, duration, 480, 480, output)
+	run_detection(east, video, duration, 480, 480, output, diff, no_draw)
 
 if __name__ == "__main__":
 	main()
